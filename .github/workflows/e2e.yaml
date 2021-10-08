@@ -43,7 +43,7 @@ jobs:
             exit 1
           fi
       - name: Build container image
-        run: make docker-build IMG=test/source-controller:latest
+        run: make docker-build IMG=test/source-controller TAG=latest BUILD_PLATFORMS=linux/amd64 BUILD_ARGS=--load
         env:
           KUBEBUILDER_ASSETS: ${{ github.workspace }}/kubebuilder/bin
       - name: Load test image
