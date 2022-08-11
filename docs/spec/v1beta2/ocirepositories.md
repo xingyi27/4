@@ -128,6 +128,98 @@ The `gcp` provider can be used when the source-controller service account
 is associated with a GCP IAM Role using Workload Identity that grants
 read-only access to Artifact Registry.
 
+#### Using Native AWS ECR Auto-Login
+
+There is native support for the AWS Elastic Container Registry available since
+source-controller v0.26.0 which was released with Flux release v0.32.
+This assumes any ECR repositories with IAM roles assigned to the cluster can be
+freely shared across any cluster tenants. It can be enabled by including a patch
+in the kustomization.yaml overlay file in your flux-system:
+
+```yaml  
+ ### add this patch to annotate service account if you are using IRSA
+patchesStrategicMerge:
+- |-
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: source-controller
+    namespace: flux-system
+    annotations:
+      eks.amazonaws.com/role-arn: <role arn>
+```
+
+**Note:** Using IAM Roles for Service Accounts (IRSA)
+If using IRSA, make sure the role attached to the service account has readonly
+access to ECR. The AWS managed policy arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+can be attached to the role.
+
+#### Using Native GCP GCR Auto-Login
+There is native support for the GCP Google Container Registry available since
+source-controller v0.26.0 which was released with Flux release v0.32. 
+This works with both clusters that have Workload Identity enabled, and those that
+use the default service account. It can be added by including a patch in the kustomization.yaml
+overlay file in your flux-system:
+
+```yaml
+### add this patch to annotate service account if you are using Workload identity
+patchesStrategicMerge:
+- |-
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: source-controller
+    namespace: flux-system
+    annotations:
+      iam.gke.io/gcp-service-account: <gcp-service-account-name>@<PROJECT_ID>.iam.gserviceaccount.com
+```
+
+The Artifact Registry service uses the permission `artifactregistry.repositories.downloadArtifacts`
+that is located under the Artifact Registry Reader role. If you are using
+Google Container Registry service, the needed permission is instead storage.objects.list
+which can be bound as part of the Container Registry Service Agent role, 
+(or it can be bound separately in your own created role for the least required permission.)
+
+Take a look at [this guide](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity)
+for more information about setting up GKE Workload Identity.
+
+#### Using Native Azure ACR Auto-Login
+There is native support for the Azure Container Registry available since
+source-controller v0.26.0 which was released with Flux release v0.32. 
+It can be added by including a patch in the kustomization.yaml overlay file in your flux-system:
+
+```yaml
+patches:
+- target:
+    version: v1
+    group: apps
+    kind: Deployment
+    name: source-controller
+    namespace: flux-system
+  patch: |-
+    - op: add 
+      path: /spec/template/metadata/labels/aadpodidbinding
+      value: <name-of-identity>  
+```
+
+**Note:** AKS with Managed Identity
+When using managed identity on an AKS cluster, [AAD Pod Identity](https://azure.github.io/aad-pod-identity/)
+has to be used to give the `source-controller` pod access to the ACR. 
+To do this, you have to install `aad-pod-identity` on your cluster, create a managed identity
+that has access to the container registry (this can also be the Kubelet identity
+if it has `AcrPull` role assignment on the ACR), create an `AzureIdentity` and `AzureIdentityBinding`
+that describe the managed identity and then label the `source-controller` pods
+with the name of the AzureIdentity as shown in the patch above. Please take a look
+at [this guide](https://azure.github.io/aad-pod-identity/docs/) or [this one](https://docs.microsoft.com/en-us/azure/aks/use-azure-ad-pod-identity) if you want to use AKS pod-managed identities add-on that is in preview.
+
+
+**Note:** Workarounds
+Please note that the native authentication feature is still experimental and using
+cron jobs to refresh credentials is still the recommended method especially
+for multi-tenancy where tenants on the same cluster don’t trust each other.
+Check [cron job documentation](https://fluxcd.io/docs/guides/cron-job-image-auth/)
+for common examples for the most popular cloud provider docker registries.
+
 ### Secret reference
 
 `.spec.secretRef.name` is an optional field to specify a name reference to a
